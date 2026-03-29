@@ -172,7 +172,10 @@
     socketBadge.textContent = 'offline';
     socketBadge.className = 'badge text-bg-warning text-dark';
   });
-  socket.on('threat_event', prependMini);
+  /* Ignore simulated SOC demo traffic (source "stream"); only show real /login attempts */
+  socket.on('threat_event', function (ev) {
+    if (ev.source === 'login_page') prependMini(ev);
+  });
 
   form.addEventListener('submit', async function (e) {
     e.preventDefault();

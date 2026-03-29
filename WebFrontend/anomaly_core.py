@@ -206,10 +206,22 @@ def process_csv(file_obj) -> dict[str, Any]:
             ts = pd.to_datetime(anomalies["timestamp"], errors="coerce")
             valid = anomalies.assign(_ts=ts).dropna(subset=["_ts"])
             if not valid.empty:
-                g = valid.groupby("_ts").size().reset_index(name="count")
+                g = (
+                    valid.sort_values("_ts")
+                    .loc[:, ["_ts", "anomaly_score", "location", "ip_address", "user_id"]]
+                    .copy()
+                )
+                # IsolationForest anomaly scores are usually negative for anomalies.
+                # Plot severity as positive magnitude so bar heights are intuitive.
+                g["severity"] = g["anomaly_score"].astype(float).abs()
                 chart = {
-                    "labels": [str(t) for t in g["_ts"]],
-                    "values": [int(x) for x in g["count"]],
+                    "labels": [t.strftime("%d %b %H:%M") for t in g["_ts"]],
+                    "timestamps": [t.strftime("%Y-%m-%d %H:%M:%S") for t in g["_ts"]],
+                    "values": [round(float(x), 6) for x in g["severity"]],
+                    "raw_scores": [round(float(x), 6) for x in g["anomaly_score"]],
+                    "locations": [str(x) for x in g["location"]],
+                    "ips": [str(x) for x in g["ip_address"]],
+                    "users": [str(x) for x in g["user_id"]],
                 }
         except Exception:
             chart = None

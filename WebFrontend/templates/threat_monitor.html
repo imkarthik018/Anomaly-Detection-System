@@ -12,7 +12,7 @@
   Model: Isolation Forest on <strong>{{ fit.baseline_rows }}</strong> baseline logins,
   <strong>{{ fit.locations }}</strong> locations,
   <strong>{{ fit.ips }}</strong> IPs.
-  Demo stream simulates ongoing logins; use the form to inject a test event. Events broadcast to all connected clients.
+  Use <strong>Start demo stream</strong> to simulate random logins (for demos only). Otherwise the table only shows events you inject or send via the API. All Socket.IO clients receive the same broadcast.
 </p>
 
 <div class="row g-3 mb-4">
@@ -82,9 +82,12 @@
   </div>
   <div class="col-lg-7">
     <div class="card border-0 shadow-sm">
-      <div class="card-header bg-transparent border-secondary d-flex justify-content-between align-items-center">
+      <div class="card-header bg-transparent border-secondary d-flex justify-content-between align-items-center flex-wrap gap-2">
         <span class="small fw-semibold">Live event stream</span>
-        <span class="badge text-bg-secondary" id="liveBadge">demo + API</span>
+        <div class="d-flex align-items-center gap-2">
+          <button type="button" class="btn btn-sm btn-outline-secondary" id="btnDemo" title="Starts fake login traffic ~1/sec for SOC demos">Start demo stream</button>
+          <span class="badge text-bg-secondary" id="liveBadge">API / manual</span>
+        </div>
       </div>
       <div class="card-body p-0">
         <div class="table-responsive threat-feed">
@@ -192,9 +195,17 @@
   }
 
   const socket = io({ transports: ['websocket', 'polling'] });
+  const liveBadge = document.getElementById('liveBadge');
+  const btnDemo = document.getElementById('btnDemo');
   socket.on('connect', () => {
     statSocket.innerHTML = '<span class="text-success">live</span>';
+  });
+  btnDemo.addEventListener('click', () => {
     socket.emit('start_demo');
+    btnDemo.disabled = true;
+    btnDemo.textContent = 'Demo running…';
+    liveBadge.textContent = 'demo + API';
+    liveBadge.className = 'badge text-bg-warning text-dark';
   });
   socket.on('disconnect', () => {
     statSocket.innerHTML = '<span class="text-warning">offline</span>';
