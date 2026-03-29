@@ -1,11 +1,12 @@
 """Flask web UI: batch CSV analysis + realtime threat monitor (WebSockets)."""
+import os
 import threading
 from pathlib import Path
 
 from flask import Flask, jsonify, render_template, request
 from flask_socketio import SocketIO
 
-from anomaly_core import process_csv
+from anomaly_core import persist_live_anomaly_event, process_csv
 from realtime_detector import RealtimeThreatEngine, random_demo_event
 
 _ROOT = Path(__file__).resolve().parent
@@ -32,6 +33,17 @@ BASELINE_CSV = _PROJECT_ROOT / "sample_login_events.csv"
 _fit_result: dict | None = None
 _demo_stream_started = False
 _demo_lock = threading.Lock()
+
+
+def _client_ip() -> str:
+    """Best-effort client IP (honor reverse-proxy headers when present)."""
+    xff = request.headers.get("X-Forwarded-For", "").strip()
+    if xff:
+        return xff.split(",")[0].strip()
+    xri = request.headers.get("X-Real-IP", "").strip()
+    if xri:
+        return xri.split(",")[0].strip()
+    return (request.remote_addr or "127.0.0.1").strip()
 
 
 def _ensure_engine() -> dict:
@@ -113,6 +125,47 @@ def live_monitor():
     return render_template("threat_monitor.html", fit=fit)
 
 
+@app.route("/login", methods=["GET"])
+def login_page():
+    fit = _ensure_engine()
+    return render_template("login.html", fit=fit, client_ip=_client_ip())
+
+
+@app.route("/api/login", methods=["POST"])
+def api_login():
+    """Score a login attempt using server-derived IP + user location; broadcast + persist anomalies."""
+    _ensure_engine()
+    data = request.get_json(silent=True) or {}
+    loc = (data.get("location") or data.get("Location") or "").strip()
+    user = (data.get("username") or data.get("user_id") or "guest").strip() or "guest"
+    if not loc:
+        return jsonify({"ok": False, "error": "location is required"}), 400
+    ip = _client_ip()
+    try:
+        ev = engine.score(str(loc), str(ip), user_id=str(user), source="login_page")
+        payload = engine.to_dict(ev)
+        socketio.emit("threat_event", payload)
+        socketio.emit(
+            "stats_update",
+            {
+                "total_events": engine.stats.total_events,
+                "threats_total": engine.stats.threats_total,
+                "threats_last_120s": engine.stats.threats_last_window,
+                "last": engine.stats.last_event,
+            },
+        )
+        persist_info: dict | None = None
+        if ev.anomaly_flag:
+            persist_info = persist_live_anomaly_event(payload)
+        body: dict = {"ok": True, "event": payload, "client_ip": ip}
+        if persist_info:
+            body["db_status"] = persist_info.get("db_status")
+            body["email_status"] = persist_info.get("email_status")
+        return jsonify(body)
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/api/ingest", methods=["POST"])
 def api_ingest():
     """Ingest a single login event (JSON) — for integrations / manual tests."""
@@ -157,4 +210,6 @@ def threat_status():
 
 if __name__ == "__main__":
     _ensure_engine()
-    socketio.run(app, host="127.0.0.1", port=8501, debug=True, allow_unsafe_werkzeug=True)
+    # Default 5000 — not 8501 (Streamlit’s default), so both can run. Override: set FLASK_PORT=5050
+    _port = int(os.environ.get("FLASK_PORT", "5000"))
+    socketio.run(app, host="127.0.0.1", port=_port, debug=True, allow_unsafe_werkzeug=True)

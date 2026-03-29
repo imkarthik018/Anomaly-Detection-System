@@ -1,0 +1,205 @@
+{% extends "base.html" %}
+{% block title %}Login — Live anomaly check{% endblock %}
+{% block page_heading %}Demo login{% endblock %}
+{% block content %}
+{% if not fit or not fit.get('ok') %}
+<div class="alert alert-danger">
+  Realtime engine could not load baseline data: {{ fit.get('error', 'unknown') if fit else 'no fit' }}.
+  Ensure <code>sample_login_events.csv</code> exists in the project root.
+</div>
+{% else %}
+<p class="text-center text-muted small mb-4">
+  Each sign-in is scored in real time with the same Isolation Forest model as batch CSV analysis.
+  IP is taken from your connection (<code>{{ client_ip }}</code>); choose a location to simulate geo.
+  Passwords are not verified — this is a detection demo only.
+</p>
+
+<div class="row g-4 justify-content-center">
+  <div class="col-lg-5">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-transparent border-secondary small fw-semibold">Sign in</div>
+      <div class="card-body">
+        <form id="loginForm" class="vstack gap-3">
+          <div>
+            <label class="form-label small mb-0" for="username">Username</label>
+            <input type="text" class="form-control" id="username" name="username" value="demo_user" autocomplete="username" required>
+          </div>
+          <div>
+            <label class="form-label small mb-0" for="password">Password</label>
+            <input type="password" class="form-control" id="password" name="password" value="anything" autocomplete="current-password" aria-describedby="pwHint">
+            <div id="pwHint" class="form-text">Not checked — use any value.</div>
+          </div>
+          <div>
+            <label class="form-label small mb-0" for="location">Location (login origin)</label>
+            <select class="form-select" id="locationPreset" aria-label="Preset city">
+              <option value="">— Choose or type below —</option>
+              <option value="Mumbai">Mumbai</option>
+              <option value="Bengaluru">Bengaluru</option>
+              <option value="Chennai">Chennai</option>
+              <option value="Hyderabad">Hyderabad</option>
+              <option value="Pune">Pune</option>
+              <option value="Kolkata">Kolkata</option>
+              <option value="Port Blair">Port Blair (often anomalous vs baseline)</option>
+              <option value="Jaipur">Jaipur</option>
+              <option value="__custom__">Custom…</option>
+            </select>
+            <input type="text" class="form-control mt-2" id="location" name="location" placeholder="City name" required>
+          </div>
+          <button type="submit" class="btn btn-primary" id="btnSubmit">Sign in</button>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-7">
+    <div class="card border-0 shadow-sm mb-3" id="resultCard" hidden>
+      <div class="card-header bg-transparent border-secondary d-flex justify-content-between align-items-center">
+        <span class="small fw-semibold">This attempt</span>
+        <span class="badge text-bg-secondary" id="resultBadge">—</span>
+      </div>
+      <div class="card-body">
+        <div class="row g-2 small">
+          <div class="col-sm-4 text-muted">Threat level</div>
+          <div class="col-sm-8 fw-semibold" id="fieldLevel">—</div>
+          <div class="col-sm-4 text-muted">Risk score</div>
+          <div class="col-sm-8" id="fieldRisk">—</div>
+          <div class="col-sm-4 text-muted">Anomaly score</div>
+          <div class="col-sm-8"><code id="fieldScore">—</code></div>
+          <div class="col-sm-4 text-muted">Server IP used</div>
+          <div class="col-sm-8"><code id="fieldIp">—</code></div>
+        </div>
+        <div id="persistBlock" class="mt-3 pt-3 border-top border-secondary d-none">
+          <div class="small text-muted mb-1">Persistence</div>
+          <div class="small" id="fieldDb"></div>
+          <div class="small" id="fieldEmail"></div>
+        </div>
+      </div>
+    </div>
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-transparent border-secondary d-flex justify-content-between align-items-center">
+        <span class="small fw-semibold">Live stream (this page + monitor)</span>
+        <span class="badge text-bg-secondary" id="socketBadge">connecting…</span>
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive threat-feed" style="max-height: 220px;">
+          <table class="table table-sm table-hover mb-0">
+            <thead class="table-light">
+              <tr>
+                <th>Time</th>
+                <th>User</th>
+                <th>Location</th>
+                <th>IP</th>
+                <th>Level</th>
+                <th>Src</th>
+              </tr>
+            </thead>
+            <tbody id="miniFeed"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if fit and fit.get('ok') %}
+<script src="https://cdn.socket.io/4.5.4/socket.io.min.js" crossorigin="anonymous"></script>
+<script>
+(function () {
+  const form = document.getElementById('loginForm');
+  const preset = document.getElementById('locationPreset');
+  const locationInput = document.getElementById('location');
+  const resultCard = document.getElementById('resultCard');
+  const persistBlock = document.getElementById('persistBlock');
+  const btnSubmit = document.getElementById('btnSubmit');
+
+  preset.addEventListener('change', function () {
+    if (preset.value && preset.value !== '__custom__') {
+      locationInput.value = preset.value;
+    }
+  });
+
+  function levelClass(level) {
+    if (level === 'CRITICAL') return 'text-bg-danger';
+    if (level === 'HIGH') return 'text-bg-warning text-dark';
+    if (level === 'ELEVATED') return 'text-bg-info text-dark';
+    return 'text-bg-success';
+  }
+
+  function showResult(j) {
+    const ev = j.event;
+    resultCard.hidden = false;
+    document.getElementById('resultBadge').className = 'badge ' + (ev.anomaly_flag ? 'text-bg-danger' : 'text-bg-success');
+    document.getElementById('resultBadge').textContent = ev.anomaly_flag ? 'ANOMALY' : 'OK';
+    document.getElementById('fieldLevel').innerHTML = '<span class="badge ' + levelClass(ev.threat_level) + '">' + ev.threat_level + '</span>';
+    document.getElementById('fieldRisk').textContent = ev.risk_score;
+    document.getElementById('fieldScore').textContent = ev.anomaly_score;
+    document.getElementById('fieldIp').textContent = j.client_ip || '—';
+    if (ev.anomaly_flag && (j.db_status || j.email_status)) {
+      persistBlock.classList.remove('d-none');
+      document.getElementById('fieldDb').textContent = j.db_status || '';
+      document.getElementById('fieldEmail').textContent = j.email_status || '';
+    } else {
+      persistBlock.classList.add('d-none');
+    }
+  }
+
+  const miniFeed = document.getElementById('miniFeed');
+  const maxMini = 12;
+  const miniRows = [];
+
+  function prependMini(ev) {
+    const tr = document.createElement('tr');
+    if (ev.anomaly_flag) tr.classList.add('row-anomaly', 'threat-pulse');
+    const t = (ev.timestamp || '').replace('T', ' ').slice(0, 19);
+    tr.innerHTML = '<td class="text-muted small">' + t + '</td><td>' + ev.user_id + '</td><td>' + ev.location + '</td><td><code class="small">' + ev.ip_address + '</code></td><td><span class="badge ' + levelClass(ev.threat_level) + '">' + ev.threat_level + '</span></td><td class="small text-muted">' + ev.source + '</td>';
+    miniFeed.insertBefore(tr, miniFeed.firstChild);
+    miniRows.unshift(tr);
+    while (miniRows.length > maxMini) {
+      const old = miniRows.pop();
+      if (old && old.parentNode) old.parentNode.removeChild(old);
+    }
+  }
+
+  const socket = io({ transports: ['websocket', 'polling'] });
+  const socketBadge = document.getElementById('socketBadge');
+  socket.on('connect', function () {
+    socketBadge.textContent = 'live';
+    socketBadge.className = 'badge text-bg-success';
+  });
+  socket.on('disconnect', function () {
+    socketBadge.textContent = 'offline';
+    socketBadge.className = 'badge text-bg-warning text-dark';
+  });
+  socket.on('threat_event', prependMini);
+
+  form.addEventListener('submit', async function (e) {
+    e.preventDefault();
+    btnSubmit.disabled = true;
+    try {
+      const body = {
+        username: document.getElementById('username').value.trim(),
+        location: locationInput.value.trim()
+      };
+      const res = await fetch('{{ url_for("api_login") }}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const j = await res.json();
+      if (!j.ok) {
+        alert(j.error || 'Request failed');
+        return;
+      }
+      showResult(j);
+    } catch (err) {
+      alert(err.message || 'Network error');
+    } finally {
+      btnSubmit.disabled = false;
+    }
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}

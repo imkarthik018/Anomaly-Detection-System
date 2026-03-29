@@ -2,6 +2,8 @@
 import os
 import smtplib
 import tempfile
+import threading
+import time
 from datetime import datetime
 from email import encoders
 from email.mime.base import MIMEBase
@@ -37,6 +39,11 @@ EMAIL_PASSWORD = (os.environ.get("EMAIL_PASSWORD") or _PLACEHOLDER_PASSWORD).rep
 TO_EMAIL = (os.environ.get("TO_EMAIL") or "vjkarthiabi@gmail.com").strip()
 DATABASE_URL = os.environ.get("DATABASE_URL", _DEFAULT_SQLITE_URL)
 
+# Rate-limit live login anomaly emails (many rapid attempts in a pen test)
+LIVE_EMAIL_COOLDOWN_SEC = float(os.environ.get("LIVE_EMAIL_COOLDOWN_SEC", "120"))
+_live_email_lock = threading.Lock()
+_live_last_email_monotonic: float = 0.0
+
 
 def _smtp_credentials_configured() -> bool:
     """Gmail needs a real address + App Password (not the repo placeholders)."""
@@ -71,6 +78,75 @@ def _send_anomaly_email(anomalies: pd.DataFrame, csv_path: str) -> str:
     server.send_message(msg)
     server.quit()
     return f"Email sent to {TO_EMAIL} with {len(anomalies)} anomalies."
+
+
+def _live_row_for_storage(ev: dict[str, Any]) -> dict[str, Any]:
+    """Align with batch CSV rows appended to login_anomalies."""
+    return {
+        "user_id": ev.get("user_id"),
+        "timestamp": ev.get("timestamp"),
+        "activity_type": "login",
+        "location": ev.get("location"),
+        "ip_address": ev.get("ip_address"),
+        "location_encoded": None,
+        "ip_encoded": None,
+        "anomaly_flag": ev.get("anomaly_flag"),
+        "anomaly_score": ev.get("anomaly_score"),
+        "insertion_time": datetime.utcnow(),
+    }
+
+
+def persist_live_anomaly_event(ev: dict[str, Any]) -> dict[str, str | None]:
+    """
+    Persist a single real-time login anomaly and optionally email (cooldown between sends).
+    ev: payload from RealtimeThreatEngine.to_dict() with anomaly_flag == 1.
+    Returns db_status / email_status strings for API responses.
+    """
+    global _live_last_email_monotonic
+    out: dict[str, str | None] = {"db_status": None, "email_status": None}
+    try:
+        df = pd.DataFrame([_live_row_for_storage(ev)])
+        eng = create_engine(DATABASE_URL)
+        df.to_sql("login_anomalies", eng, if_exists="append", index=False)
+        out["db_status"] = "Anomaly saved to the database."
+    except Exception as e:
+        out["db_status"] = f"Database error: {e}"
+
+    skip = os.environ.get("SKIP_EMAIL", "").strip().lower() in ("1", "true", "yes")
+    if skip:
+        out["email_status"] = "Email skipped (SKIP_EMAIL=1)."
+        return out
+    if not _smtp_credentials_configured():
+        out["email_status"] = (
+            "Email not sent: configure EMAIL_ADDRESS and EMAIL_PASSWORD in .env for alerts."
+        )
+        return out
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp:
+        pd.DataFrame([_live_row_for_storage(ev)]).to_csv(tmp.name, index=False)
+        csv_path = tmp.name
+    try:
+        with _live_email_lock:
+            now = time.monotonic()
+            if now - _live_last_email_monotonic < LIVE_EMAIL_COOLDOWN_SEC:
+                wait = int(LIVE_EMAIL_COOLDOWN_SEC - (now - _live_last_email_monotonic))
+                out["email_status"] = (
+                    f"Email not sent (cooldown: next alert allowed in ~{wait}s)."
+                )
+                return out
+            try:
+                single = pd.DataFrame([_live_row_for_storage(ev)])
+                _send_anomaly_email(single, csv_path)
+                _live_last_email_monotonic = time.monotonic()
+                out["email_status"] = f"Alert email sent to {TO_EMAIL}."
+            except Exception as e:
+                out["email_status"] = f"Email error: {e}"
+    finally:
+        try:
+            os.unlink(csv_path)
+        except OSError:
+            pass
+    return out
 
 
 def process_csv(file_obj) -> dict[str, Any]:
