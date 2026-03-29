@@ -1,0 +1,7 @@
+# Prefer ../requirements.txt (Flask web UI). Legacy Streamlit optional: streamlit altair
+pandas
+numpy
+scikit-learn
+flask
+sqlalchemy
+psycopg2-binary

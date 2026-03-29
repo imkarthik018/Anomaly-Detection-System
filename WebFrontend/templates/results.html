@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block page_heading %}Detection results{% endblock %}
+{% block content %}
+<div class="row g-3 mb-4">
+  <div class="col-md-6">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body text-center">
+        <div class="text-muted small">Total logins</div>
+        <div class="display-6 fw-semibold">{{ result.total_logins }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body text-center">
+        <div class="text-muted small">Detected anomalies</div>
+        <div class="display-6 fw-semibold text-danger-emphasis">{{ result.anomaly_count }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if result.no_anomalies_message %}
+<div class="alert alert-success">{{ result.no_anomalies_message }}</div>
+{% endif %}
+
+{% if result.db_status %}
+<div class="alert alert-{{ 'success' if 'saved' in result.db_status else 'warning' }}" role="alert">
+  <strong>Database:</strong> {{ result.db_status }}
+</div>
+{% endif %}
+
+{% if result.email_status %}
+<div class="alert alert-{{ 'success' if result.email_status.startswith('Email sent') else 'warning' }}" role="alert">
+  <strong>Email:</strong> {{ result.email_status }}
+</div>
+{% endif %}
+
+<h2 class="h5 mb-3">Detection results</h2>
+<div class="table-responsive rounded border table-wrap mb-4">
+  <table class="table table-sm table-hover mb-0">
+    <thead>
+      <tr>
+        {% for col in result.columns %}
+        <th scope="col">{{ col }}</th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in result.rows %}
+      <tr class="{{ 'row-anomaly' if row.is_anomaly else '' }}">
+        {% for cell in row.cells %}
+        <td>{{ cell }}</td>
+        {% endfor %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if result.chart %}
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-body">
+    <h3 class="h6 mb-3">Anomalies over time</h3>
+    <canvas id="anomalyChart" height="100"></canvas>
+  </div>
+</div>
+{% endif %}
+
+<p>
+  <a href="{{ url_for('index') }}" class="btn btn-outline-primary">Upload another file</a>
+</p>
+{% endblock %}
+
+{% block scripts %}
+{% if result.chart %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
+<script>
+  {# Use bracket keys: .values is dict.values() method, not the "values" key #}
+  const labels = {{ result.chart['labels'] | tojson }};
+  const values = {{ result.chart['values'] | tojson }};
+  const ctx = document.getElementById('anomalyChart');
+  if (ctx) {
+    new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'Count',
+          data: values,
+          backgroundColor: 'rgba(220, 53, 69, 0.75)',
+          borderColor: 'rgba(220, 53, 69, 1)',
+          borderWidth: 1
+        }]
+      },
+      options: {
+        responsive: true,
+        scales: {
+          x: {
+            ticks: { color: '#8b949e' },
+            grid: { color: 'rgba(240, 246, 252, 0.06)' }
+          },
+          y: {
+            beginAtZero: true,
+            ticks: { stepSize: 1, color: '#8b949e' },
+            grid: { color: 'rgba(240, 246, 252, 0.06)' }
+          }
+        },
+        plugins: { legend: { display: false } }
+      }
+    });
+  }
+</script>
+{% endif %}
+{% endblock %}

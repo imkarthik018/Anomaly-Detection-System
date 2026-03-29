@@ -1,0 +1,230 @@
+{% extends "base.html" %}
+{% block title %}Live Threat Monitor{% endblock %}
+{% block page_heading %}Live Threat Monitor{% endblock %}
+{% block content %}
+{% if not fit or not fit.get('ok') %}
+<div class="alert alert-danger">
+  Realtime engine could not load baseline data: {{ fit.get('error', 'unknown') if fit else 'no fit' }}.
+  Ensure <code>sample_login_events.csv</code> exists in the project root.
+</div>
+{% else %}
+<p class="text-center text-muted small mb-4">
+  Model: Isolation Forest on <strong>{{ fit.baseline_rows }}</strong> baseline logins,
+  <strong>{{ fit.locations }}</strong> locations,
+  <strong>{{ fit.ips }}</strong> IPs.
+  Demo stream simulates ongoing logins; use the form to inject a test event. Events broadcast to all connected clients.
+</p>
+
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body text-center py-3">
+        <div class="text-muted small text-uppercase">Events (session)</div>
+        <div class="fs-2 fw-bold" id="statTotal">0</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body text-center py-3">
+        <div class="text-muted small text-uppercase">Threats (total)</div>
+        <div class="fs-2 fw-bold text-danger" id="statThreats">0</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body text-center py-3">
+        <div class="text-muted small text-uppercase">Threats (120s)</div>
+        <div class="fs-2 fw-bold text-warning" id="statWindow">0</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body text-center py-3">
+        <div class="text-muted small text-uppercase">Socket</div>
+        <div class="fs-6 fw-semibold" id="statSocket"><span class="text-secondary">connecting…</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-4">
+  <div class="col-lg-5">
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header bg-transparent border-secondary small fw-semibold">Inject login event (API)</div>
+      <div class="card-body">
+        <form id="injectForm" class="vstack gap-2">
+          <div>
+            <label class="form-label small mb-0">User ID</label>
+            <input type="text" class="form-control form-control-sm" name="user_id" value="42" autocomplete="off">
+          </div>
+          <div>
+            <label class="form-label small mb-0">Location</label>
+            <input type="text" class="form-control form-control-sm" name="location" placeholder="e.g. Mumbai" required>
+          </div>
+          <div>
+            <label class="form-label small mb-0">IP address</label>
+            <input type="text" class="form-control form-control-sm" name="ip_address" placeholder="192.168.1.50" required>
+          </div>
+          <button type="submit" class="btn btn-sm btn-outline-danger mt-1">Score &amp; broadcast</button>
+        </form>
+        <p class="small text-muted mt-2 mb-0" id="injectHint">POST <code>/api/ingest</code> JSON for integrations.</p>
+      </div>
+    </div>
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-transparent border-secondary small fw-semibold">Threat rate (rolling)</div>
+      <div class="card-body">
+        <canvas id="rateChart" height="140"></canvas>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-7">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-transparent border-secondary d-flex justify-content-between align-items-center">
+        <span class="small fw-semibold">Live event stream</span>
+        <span class="badge text-bg-secondary" id="liveBadge">demo + API</span>
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive threat-feed">
+          <table class="table table-sm table-hover mb-0">
+            <thead class="table-light">
+              <tr>
+                <th>Time</th>
+                <th>User</th>
+                <th>Location</th>
+                <th>IP</th>
+                <th>Level</th>
+                <th>Risk</th>
+                <th>Src</th>
+              </tr>
+            </thead>
+            <tbody id="feedBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if fit and fit.get('ok') %}
+<script src="https://cdn.socket.io/4.5.4/socket.io.min.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
+<script>
+(function () {
+  const feedBody = document.getElementById('feedBody');
+  const maxRows = 80;
+  const rows = [];
+
+  function levelClass(level) {
+    if (level === 'CRITICAL') return 'text-bg-danger';
+    if (level === 'HIGH') return 'text-bg-warning text-dark';
+    if (level === 'ELEVATED') return 'text-bg-info text-dark';
+    return 'text-bg-secondary';
+  }
+
+  function prependEvent(ev) {
+    const tr = document.createElement('tr');
+    if (ev.anomaly_flag) tr.classList.add('row-anomaly', 'threat-pulse');
+    const t = (ev.timestamp || '').replace('T', ' ').slice(0, 19);
+    tr.innerHTML = `
+      <td class="text-muted small">${t}</td>
+      <td>${ev.user_id}</td>
+      <td>${ev.location}</td>
+      <td><code class="small">${ev.ip_address}</code></td>
+      <td><span class="badge ${levelClass(ev.threat_level)}">${ev.threat_level}</span></td>
+      <td>${ev.risk_score}</td>
+      <td class="small text-muted">${ev.source}</td>`;
+    feedBody.insertBefore(tr, feedBody.firstChild);
+    rows.unshift(tr);
+    while (rows.length > maxRows) {
+      const old = rows.pop();
+      if (old && old.parentNode) old.parentNode.removeChild(old);
+    }
+  }
+
+  const statTotal = document.getElementById('statTotal');
+  const statThreats = document.getElementById('statThreats');
+  const statWindow = document.getElementById('statWindow');
+  const statSocket = document.getElementById('statSocket');
+
+  const rateLabels = [];
+  const rateData = [];
+  const maxPoints = 30;
+  const rateChart = new Chart(document.getElementById('rateChart'), {
+    type: 'line',
+    data: {
+      labels: rateLabels,
+      datasets: [{
+        label: 'Threats in last 120s',
+        data: rateData,
+        borderColor: 'rgba(248, 81, 73, 0.9)',
+        backgroundColor: 'rgba(248, 81, 73, 0.15)',
+        fill: true,
+        tension: 0.25,
+        pointRadius: 0
+      }]
+    },
+    options: {
+      responsive: true,
+      animation: false,
+      scales: {
+        y: { beginAtZero: true, ticks: { stepSize: 1 } },
+        x: { display: false }
+      },
+      plugins: { legend: { display: false } }
+    }
+  });
+
+  function pushWindowChart(windowCount) {
+    const t = new Date().toLocaleTimeString();
+    rateLabels.push(t);
+    rateData.push(windowCount);
+    while (rateLabels.length > maxPoints) {
+      rateLabels.shift();
+      rateData.shift();
+    }
+    rateChart.update();
+  }
+
+  const socket = io({ transports: ['websocket', 'polling'] });
+  socket.on('connect', () => {
+    statSocket.innerHTML = '<span class="text-success">live</span>';
+    socket.emit('start_demo');
+  });
+  socket.on('disconnect', () => {
+    statSocket.innerHTML = '<span class="text-warning">offline</span>';
+  });
+  socket.on('soc_status', () => {});
+  socket.on('threat_event', (ev) => prependEvent(ev));
+  socket.on('stats_update', (s) => {
+    statTotal.textContent = s.total_events;
+    statThreats.textContent = s.threats_total;
+    statWindow.textContent = s.threats_last_120s;
+    pushWindowChart(s.threats_last_120s);
+  });
+
+  document.getElementById('injectForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const body = {
+      user_id: fd.get('user_id'),
+      location: fd.get('location'),
+      ip_address: fd.get('ip_address')
+    };
+    const res = await fetch('{{ url_for("api_ingest") }}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const j = await res.json();
+    if (!j.ok) alert(j.error || 'Request failed');
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}

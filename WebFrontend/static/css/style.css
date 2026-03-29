@@ -1,0 +1,177 @@
+/* Dark theme — works with Bootstrap data-bs-theme="dark" */
+:root {
+  --app-bg-top: #0d1117;
+  --app-bg-bottom: #161b22;
+  --app-surface: #21262d;
+  --app-surface-elevated: #30363d;
+  --app-border: #30363d;
+  --app-text: #e6edf3;
+  --app-muted: #8b949e;
+  --app-accent: #58a6ff;
+  --app-anomaly-row: rgba(248, 81, 73, 0.18);
+  --app-anomaly-row-hover: rgba(248, 81, 73, 0.28);
+}
+
+.app-body {
+  background: linear-gradient(165deg, var(--app-bg-top) 0%, var(--app-bg-bottom) 55%, #0d1117 100%);
+  color: var(--app-text);
+  min-height: 100vh;
+}
+
+.app-title {
+  color: var(--app-text);
+  font-weight: 700;
+  font-size: 2rem;
+  letter-spacing: -0.02em;
+}
+
+/* Cards: slightly elevated surface */
+[data-bs-theme="dark"] .card {
+  background-color: var(--app-surface);
+  border-color: var(--app-border);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
+}
+
+/* Primary actions — readable on dark */
+[data-bs-theme="dark"] .btn-primary {
+  background-color: #238636;
+  border-color: #238636;
+}
+
+[data-bs-theme="dark"] .btn-primary:hover {
+  background-color: #2ea043;
+  border-color: #2ea043;
+}
+
+[data-bs-theme="dark"] .btn-outline-primary {
+  color: var(--app-accent);
+  border-color: #388bfd;
+}
+
+[data-bs-theme="dark"] .btn-outline-primary:hover {
+  background-color: rgba(56, 139, 253, 0.15);
+  border-color: var(--app-accent);
+  color: var(--app-text);
+}
+
+/* Muted text */
+[data-bs-theme="dark"] .text-muted {
+  color: var(--app-muted) !important;
+}
+
+/* Code inline hints */
+[data-bs-theme="dark"] code {
+  color: #79c0ff;
+  background-color: rgba(110, 118, 129, 0.25);
+  padding: 0.15em 0.4em;
+  border-radius: 0.25rem;
+  font-size: 0.9em;
+}
+
+/* Results table wrapper */
+.table-wrap {
+  background-color: var(--app-surface);
+  border-color: var(--app-border) !important;
+}
+
+[data-bs-theme="dark"] .table {
+  --bs-table-bg: transparent;
+  --bs-table-color: var(--app-text);
+  --bs-table-border-color: var(--app-border);
+  color: var(--app-text);
+}
+
+[data-bs-theme="dark"] .table thead th {
+  background-color: var(--app-surface-elevated);
+  color: var(--app-muted);
+  font-weight: 600;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom-color: var(--app-border);
+}
+
+[data-bs-theme="dark"] .table tbody tr:hover {
+  --bs-table-hover-bg: rgba(56, 139, 253, 0.08);
+}
+
+.row-anomaly {
+  background-color: var(--app-anomaly-row) !important;
+}
+
+[data-bs-theme="dark"] .table tbody tr.row-anomaly:hover {
+  --bs-table-hover-bg: var(--app-anomaly-row-hover);
+}
+
+.table-responsive {
+  max-height: 70vh;
+  overflow: auto;
+}
+
+/* Live threat feed */
+.threat-feed {
+  max-height: 55vh;
+  overflow: auto;
+}
+
+.navbar .nav-link {
+  color: var(--app-muted);
+}
+
+.navbar .nav-link:hover {
+  color: var(--app-text);
+  background-color: rgba(56, 139, 253, 0.1);
+}
+
+@keyframes threatPulse {
+  0% { box-shadow: inset 0 0 0 0 rgba(248, 81, 73, 0.45); }
+  100% { box-shadow: inset 0 0 0 0 rgba(248, 81, 73, 0); }
+}
+
+tr.threat-pulse {
+  animation: threatPulse 0.6s ease-out 1;
+}
+
+/* Alerts — soften for dark */
+[data-bs-theme="dark"] .alert-success {
+  background-color: rgba(35, 134, 54, 0.15);
+  border-color: rgba(35, 134, 54, 0.45);
+  color: #3fb950;
+}
+
+[data-bs-theme="dark"] .alert-warning {
+  background-color: rgba(210, 153, 34, 0.12);
+  border-color: rgba(210, 153, 34, 0.4);
+  color: #d4a72c;
+}
+
+[data-bs-theme="dark"] .alert-danger {
+  background-color: rgba(248, 81, 73, 0.12);
+  border-color: rgba(248, 81, 73, 0.35);
+  color: #ff7b72;
+}
+
+/* File input */
+[data-bs-theme="dark"] .form-control {
+  background-color: var(--app-bg-top);
+  border-color: var(--app-border);
+  color: var(--app-text);
+}
+
+[data-bs-theme="dark"] .form-control:focus {
+  border-color: var(--app-accent);
+  box-shadow: 0 0 0 0.2rem rgba(56, 139, 253, 0.25);
+}
+
+[data-bs-theme="dark"] .form-text {
+  color: var(--app-muted);
+}
+
+/* Footer link */
+[data-bs-theme="dark"] a:not(.btn) {
+  color: var(--app-accent);
+}
+
+[data-bs-theme="dark"] a:not(.btn):hover {
+  color: #79c0ff;
+}
