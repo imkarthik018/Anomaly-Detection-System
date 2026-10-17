@@ -40,31 +40,6 @@ The system uses the **Isolation Forest** algorithm to identify anomalous login a
 | Visualization | Altair |
 | Email Notifications | SMTP (Gmail or compatible provider) |
 
-## Screenshots
-
-### 1. Machine Learning Output
-
-The model produces anomaly scores and flags for login events.
-
-![Machine Learning Output](https://github.com/imkarthik018/Anomaly-Detection-main/blob/main/Screenshots/anomaly_ml.png?raw=true)
-
-### 2. Streamlit Dashboard
-
-Interactive visualization of login activity and detected anomalies.
-
-![Streamlit Dashboard](https://github.com/imkarthik018/Anomaly-Detection-main/blob/main/Screenshots/Anomaly%20Frontend.png?raw=true)
-
-### 3. PostgreSQL Database
-
-Historical anomaly records viewed through Adminer.
-
-![PostgreSQL Database View](https://github.com/imkarthik018/Anomaly-Detection-main/blob/main/Screenshots/Anomaly%20Adminer.png?raw=true)
-
-### 4. Email Notifications
-
-Email alerts containing a summary of detected anomalies and a CSV report.
-
-![Email Alert](https://github.com/imkarthik018/Anomaly-Detection-main/blob/main/Screenshots/email_alert.png?raw=true)
 
 ## Installation and Setup
 
@@ -99,27 +74,6 @@ Create and activate a virtual environment.
 python -m venv venv
 venv\Scripts\activate
 ```
-
-**Linux/macOS:**
-
-```bash
-python3 -m venv venv
-source venv/bin/activate
-```
-
-Install the required dependencies:
-
-```bash
-pip install -r requirements.txt
-```
-
-Run the machine learning pipeline:
-
-```bash
-python machine.py
-```
-
-> Ensure you are using the correct entry point and working directory for your implementation.
 
 ### 3. Configure the Database
 
@@ -180,13 +134,6 @@ Open the local URL displayed in your terminal to access the dashboard.
 - Improved model evaluation, threshold tuning, and anomaly explanations.
 - Enhanced security, logging, and monitoring capabilities.
 
-## License
-
-Review the original project's license before distributing this adapted version. Retain applicable copyright notices and comply with the original license terms. Add or update a `LICENSE` file only when its contents accurately reflect the rights and terms applicable to this repository.
-
-## Acknowledgments
-
-This project was adapted from an existing anomaly detection implementation and further modified for its current use case. Original authors and source repositories should be credited in accordance with the original project's license and attribution requirements.
 
 ## Author
 
