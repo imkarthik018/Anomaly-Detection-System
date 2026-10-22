@@ -6,8 +6,12 @@ from pathlib import Path
 from flask import Flask, jsonify, render_template, request
 from flask_socketio import SocketIO
 
-from anomaly_core import persist_live_anomaly_event, process_csv
-from realtime_detector import RealtimeThreatEngine, random_demo_event
+try:
+    from .anomaly_core import persist_live_anomaly_event, process_csv
+    from .realtime_detector import RealtimeThreatEngine, random_demo_event
+except ImportError:
+    from anomaly_core import persist_live_anomaly_event, process_csv
+    from realtime_detector import RealtimeThreatEngine, random_demo_event
 
 _ROOT = Path(__file__).resolve().parent
 _PROJECT_ROOT = _ROOT.parent
