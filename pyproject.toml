@@ -1,2 +1,17 @@
+[project]
+name = "anomaly-detection-system"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+  "pandas>=2.0",
+  "numpy>=1.24",
+  "scikit-learn>=1.3",
+  "flask>=3.0",
+  "flask-socketio>=5.3",
+  "python-dotenv>=1.0",
+  "sqlalchemy>=2.0",
+  "psycopg2-binary>=2.9",
+]
+
 [tool.vercel]
 entrypoint = "WebFrontend.app:app"
